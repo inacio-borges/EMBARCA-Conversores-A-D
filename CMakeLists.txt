@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(EMBARCA-Conversores-A-D EMBARCA-Conversores-A-D.c )
+add_executable(EMBARCA-Conversores-A-D EMBARCA-Conversores-A-D.c lib/ssd1306.c)
 
 pico_set_program_name(EMBARCA-Conversores-A-D "EMBARCA-Conversores-A-D")
 pico_set_program_version(EMBARCA-Conversores-A-D "0.1")
@@ -68,6 +68,7 @@ target_link_libraries(EMBARCA-Conversores-A-D
         hardware_clocks
         hardware_pwm
         hardware_adc
+        pico_stdlib
         )
 pico_add_extra_outputs(EMBARCA-Conversores-A-D)
 
