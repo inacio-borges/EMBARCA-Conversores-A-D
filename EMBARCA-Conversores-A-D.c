@@ -1,16 +1,17 @@
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "hardware/pwm.h"
 #include "hardware/adc.h"
 #include "hardware/i2c.h"
+#include "lib/ssd1306.h"
+#include "lib/font.h"
 
-// definicao dos pinos para PWM
-#define PWM_GREEN 11                       // para definir o pwm no led da BitDogLab
-#define PWM_BLUE 12                        // para definir o pwm no led da BitDogLab
-#define PWM_RED 13                         // para definir o pwm no led da BitDogLab
-#define PWM_FREQ 50                        // Frequência do PWM em Hz
-#define PWM_PERIOD_US (1000000 / PWM_FREQ) // Período do PWM em microssegundos (20ms)
+#define I2C_PORT i2c1
+#define I2C_SDA 14
+#define I2C_SCL 15
+#define endereco 0x3C
 
 // definicao do joystick
 #define JOY_X 27
@@ -19,9 +20,16 @@
 
 // definicao dos botoes
 #define A_BUTTON 5
+
+// definicao dos pinos para PWM
+#define PWM_GREEN 11                       // para definir o pwm no led da BitDogLab
+#define PWM_BLUE 12                        // para definir o pwm no led da BitDogLab
+#define PWM_RED 13                         // para definir o pwm no led da BitDogLab
+#define PWM_FREQ 50                        // Frequência do PWM em Hz
+#define PWM_PERIOD_US (1000000 / PWM_FREQ) // Período do PWM em microssegundos (20ms)
+
 const uint16_t WRAP_PERIOD = 20000; // valor máximo do contador - WRAP
 const float PWM_DIVISER = 125.0f;   // divisor do clock para o PWM
-
 // Função para definir a porcentagem do pwm
 void set_pwm_percent(uint slice_num, uint channel, float percent)
 {
@@ -101,6 +109,21 @@ int main()
     gpio_set_dir(JOY_BUTTON, GPIO_IN);
     gpio_pull_up(JOY_BUTTON);
 
+    // I2C Initialisation. Using it at 400Khz.
+    i2c_init(I2C_PORT, 400 * 1000);
+
+    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);                    // Set the GPIO pin function to I2C
+    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);                    // Set the GPIO pin function to I2C
+    gpio_pull_up(I2C_SDA);                                        // Pull up the data line
+    gpio_pull_up(I2C_SCL);                                        // Pull up the clock line
+    ssd1306_t ssd;                                                // Inicializa a estrutura do display
+    ssd1306_init(&ssd, WIDTH, HEIGHT, false, endereco, I2C_PORT); // Inicializa o display
+    ssd1306_config(&ssd);                                         // Configura o display
+    ssd1306_send_data(&ssd);                                      // Envia os dados para o display
+
+    // Limpa o display. O display inicia com todos os pixels apagados.
+    ssd1306_fill(&ssd, false);
+    ssd1306_send_data(&ssd);
     // Configuração da interrupção do botão (detecta borda de descida)
     gpio_set_irq_enabled_with_callback(A_BUTTON,
                                        GPIO_IRQ_EDGE_FALL,
@@ -136,39 +159,56 @@ int main()
     pwm_set_enabled(slice_GREEN, true); // habilita o pwm no slice correspondente
     pwm_set_enabled(slice_BLUE, true);  // habilita o pwm no slice correspondente
 
+    
     while (true)
     {
-        adc_select_input(0);
-        uint16_t X_axis = adc_read();
+        // Limpa o display. O display inicia com todos os pixels apagados.
+        ssd1306_fill(&ssd, false);
+        ssd1306_send_data(&ssd);
+
         adc_select_input(1);
+        uint16_t X_axis = adc_read();
+        adc_select_input(0);
         uint16_t Y_axis = adc_read();
+
+        int16_t Y_axis_ssd = 4096 - Y_axis; // espelha o eixo y para ficar mais intuitivo no display
 
         // calculo do valor dos eixos de -100 a 100
         double X_axis_percent = (X_axis - 2048) / 2048.0 * 100;
         double Y_axis_percent = (Y_axis - 2048) / 2048.0 * 100;
-
+        double Y_axis_ssd_percent = (Y_axis_ssd - 2048) / 2048.0 * 28;
+        double X_axis_ssd_percent = (X_axis - 2048) / 2048.0 * 56;
         double dead_zone = 8.0; // ajusta o ponto zero do joystik para ignorar a flutuaçao.
 
         // retira o sinal negativo dos valores
+        
+        // aplicar a dead zone
+        
+        X_axis_percent = (fabs(X_axis_percent) < dead_zone) ? 0 : X_axis_percent;
+        Y_axis_percent = (fabs(Y_axis_percent) < dead_zone) ? 0 : Y_axis_percent;
+        Y_axis_ssd_percent = (fabs(Y_axis_ssd_percent) < dead_zone) ? 0 : Y_axis_ssd_percent;
+        X_axis_ssd_percent = (fabs(X_axis_ssd_percent) < dead_zone) ? 0 : X_axis_ssd_percent;
+        
+        ssd1306_rect(&ssd, Y_axis_ssd_percent + 28, X_axis_ssd_percent + 60 , 8, 8, true, true); // Desenha um retângulo
+        ssd1306_send_data(&ssd);                                             // Atualiza o display
+
+        
+
         X_axis_percent = fabs(X_axis_percent);
         Y_axis_percent = fabs(Y_axis_percent);
-
-        // aplicar a dead zone
-        X_axis_percent = (X_axis_percent < dead_zone) ? 0 : X_axis_percent;
-        Y_axis_percent = (Y_axis_percent < dead_zone) ? 0 : Y_axis_percent;
 
         // botão A ativa e desativa o controle dos LEDs pwm pelo joystick a cada acionamento
         if (flagA)
         {
             set_pwm_percent(slice_RED, channel_RED, X_axis_percent);
             set_pwm_percent(slice_BLUE, channel_BLUE, Y_axis_percent);
-            printf("eixo y%%: %f, eixo Y: %u \n", Y_axis_percent, Y_axis);
-            printf("eixo x%%: %f, eixo X: %u \n", X_axis_percent, X_axis);
-            sleep_ms(50);
+            printf("eixo y%%: %f, eixo Y: %f \n", Y_axis_ssd_percent, X_axis_ssd_percent);
+            //printf("eixo x%%: %f, eixo X: %u \n", X_axis_percent, X_axis);
+            sleep_ms(5);
         }
         // controle do led verde de acordo com o botao do joystick
         set_pwm_percent(slice_GREEN, channel_GREEN, flagJoy ? 0 : 100);
 
-        sleep_ms(1);
+        sleep_ms(20);
     }
 }
