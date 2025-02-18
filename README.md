@@ -2,7 +2,7 @@
 
 Aluno: Inacio Oliveira Borges
 
-link para o video da execucao do projeto: [Projeto em execucao](https://youtu.be/DyWpsKNwqAA)
+link para o video da execucao do projeto: [Projeto em execucao](https://youtu.be/gRqNTdKJCIw)
 
 
 ## Descrição do Projeto
